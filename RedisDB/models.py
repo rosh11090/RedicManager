@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 from django.db import models
 from django.core.exceptions import ValidationError
 
@@ -138,7 +139,7 @@ class KeyValuePair(models.Model):
     dictionary = models.ForeignKey(GlobalDictionary, db_index=True, related_name='key_value_pairs') #n-1 relation : many KeyValuePairs correspond to same Dictionary
     key = models.CharField(max_length=100, db_index=True)
     #the value could be either of type char, int, timestamp etc
-    value_type = models.CharField(max_length=2, choices=VALUE_TYPE, default='S')
+    value_type = models.CharField(max_length=2, choices=VALUE_TYPE, default='S', help_text='date format is dd/mm/yyyy and for timestamp yyyy/mm/dd/hh/mm/ss')
     value = models.TextField(default='', blank=True) #interpret value according to value_type
 
     def clean(self):
@@ -160,6 +161,14 @@ class KeyValuePair(models.Model):
             except:
                 raise ValidationError('Invalid value for float')
 
+        if self.value_type == 'D':
+            if not self.convert_str_to_date():
+                raise ValidationError('Invalid value for date')
+
+        if self.value_type == 'T':
+            if not self.convert_str_to_timestamp():
+                raise ValidationError('Invalid value for timestamp')
+
     def save(self, *args, **kwargs):
         self.clean()
         super(KeyValuePair, self).save(*args, **kwargs)
@@ -168,6 +177,31 @@ class KeyValuePair(models.Model):
         str = '<' + self.key + ', ' + self.value + ' ('\
               + self.get_value_type_display() + ') >'
         return str
+
+    def convert_str_to_timestamp(self):
+        try:
+            list = self.value.split('/')
+            y = int(list[0])
+            mo = int(list[1])
+            d = int(list[2])
+            h = int(list[3])
+            min = int(list[4])
+            s = int(list[5])
+            timestamp = datetime(y, mo, d, h, min, s)
+            return timestamp
+        except:
+            return None
+
+    def convert_str_to_date(self):
+        try:
+            list = self.value.split('/')
+            d = int(list[0])
+            m = int(list[1])
+            y = int(list[2])
+            date = datetime(y, m, d)
+            return date
+        except:
+            return None
 
     def get_value(self):
         if self.value_type == 'S':
@@ -179,26 +213,13 @@ class KeyValuePair(models.Model):
         elif self.value_type == 'F':
             return float(self.value)
         elif self.value_type == 'D':
-            list = self.value.split('/')
-            d = int(list[0])
-            m = int(list[1])
-            y = int(list[2])
-            date = datetime(y, m, d)
+            date = self.convert_str_to_date()
             return date
         elif self.value_type == 'T':
-            list = self.value.split('/')
-            y = int(list[0])
-            mo = int(list[1])
-            d = int(list[2])
-            h = int(list[3])
-            min = int(list[4])
-            s = int(list[5])
-            timestamp = datetime(y, mo, d, h, min, s)
+            timestamp = self.convert_str_to_timestamp()
             return timestamp
-        elif self.value_type == 'GD':
-            return self.value_if_dictionary
-        elif self.value_type == 'DI':
-            pass
+        elif self.value_type == 'J':
+            return json.loads(self.value)
 
     def guess_type(self, value):
         type_of_value = type(value)
